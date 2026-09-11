@@ -1,0 +1,50 @@
+CUSTOMER COMPLAINT
+
+Complaint Source: Customer Email
+
+From: ABC Pharmaceuticals Pvt. Ltd.
+
+Complaint Date: 10 September 2026
+
+Customer Name: ABC Pharmaceuticals Pvt. Ltd.
+
+PRODUCT INFORMATION
+
+Product Name: Paracetamol Tablets
+
+Product Strength: 500 mg
+
+Batch / Lot Number: PCM-240821
+
+Manufacturing Date: 21 August 2026
+
+Expiry Date: 31 July 2028
+
+Quantity Affected: 15 kg
+
+COMPLAINT DETAILS
+
+Complaint Type: Product Quality
+
+Complaint Description:
+
+The customer reported abnormal discoloration of Paracetamol
+500 mg tablets from batch PCM-240821.
+
+The issue was observed in multiple packs received by the
+customer during routine inspection before further distribution.
+
+Several tablets showed visible brownish discoloration
+compared with the normal product appearance.
+
+The customer requested an investigation into the cause of
+the discoloration and replacement of the affected product.
+
+The customer also requested confirmation regarding the quality
+status of the remaining quantity from the same batch.
+
+INITIAL ASSESSMENT
+
+Initial Severity: Major
+
+Priority: High
