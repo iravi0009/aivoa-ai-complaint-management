@@ -103,12 +103,23 @@ class AICompleteness(BaseModel):
 
 
 class AIRiskAssessment(BaseModel):
-    """AI/rule-based risk assessment."""
+    """Explainable AI/rule-based risk assessment."""
 
     risk_level: RiskLevel
     severity: Severity
-    confidence: float = Field(ge=0, le=1)
+    confidence: float = Field(
+        ge=0,
+        le=1,
+    )
     reasoning: str
+
+    score: int = Field(
+        ge=0,
+    )
+
+    factors: list[str] = Field(
+        default_factory=list,
+    )
 
 
 class AIPriorityAssessment(BaseModel):
@@ -125,3 +136,5 @@ class AIAnalysisResponse(BaseModel):
     completeness: AICompleteness
     risk_assessment: AIRiskAssessment
     priority_assessment: AIPriorityAssessment
+    
+    
