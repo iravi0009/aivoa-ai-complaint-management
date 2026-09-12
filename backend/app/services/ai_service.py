@@ -4,6 +4,7 @@ import re
 from groq import Groq
 
 from app.core.config import settings
+from app.schemas.complaint import AIComplaintExtraction
 
 
 client = Groq(
@@ -100,7 +101,8 @@ def _call_model(
     text: str,
 ) -> dict:
     """
-    Send the complaint to a specific Groq model.
+    Send the complaint to a specific Groq model and
+    validate the structured response using Pydantic.
     """
 
     response = client.chat.completions.create(
@@ -125,7 +127,11 @@ def _call_model(
 
     content = response.choices[0].message.content or ""
 
-    return _extract_json(content)
+    raw_data = _extract_json(content)
+
+    validated = AIComplaintExtraction.model_validate(raw_data)
+
+    return validated.model_dump(mode="json")
 
 
 def extract_complaint(text: str) -> dict:
