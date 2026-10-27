@@ -1,3 +1,5 @@
+
+import { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import type { RootState, AppDispatch } from "../../app/store";
 
@@ -6,6 +8,11 @@ import {
   updateField,
   submitComplaint,
 } from "../../features/complaint/complaintSlice";
+
+import {
+  checkDuplicate,
+  type DuplicateCheckResult,
+} from "../../services/api";
 
 import FormSection from "./FormSection";
 
@@ -68,15 +75,21 @@ export default function ComplaintForm() {
   );
 
   const savedComplaintNumber = useSelector(
-    (state: RootState) =>
-      state.complaint.savedComplaintNumber
+    (state: RootState) => state.complaint.savedComplaintNumber
   );
 
   const saveError = useSelector(
     (state: RootState) => state.complaint.error
   );
 
-  const handleSave = () => {
+  const [checkingDuplicate, setCheckingDuplicate] = useState(false);
+  const [duplicateError, setDuplicateError] = useState<string | null>(null);
+  const [duplicateResult, setDuplicateResult] =
+    useState<DuplicateCheckResult | null>(null);
+  const [duplicateReviewFor, setDuplicateReviewFor] =
+    useState<string | null>(null);
+
+  const handleSave = async () => {
     if (!complaint.customer_name.trim()) {
       alert("Please enter the customer name.");
       return;
@@ -107,8 +120,57 @@ export default function ComplaintForm() {
       return;
     }
 
-    dispatch(submitComplaint(complaint));
+    const currentComplaint = JSON.stringify(complaint);
+
+    // Continue only after explicit confirmation.
+    if (
+      duplicateReviewFor === currentComplaint &&
+      duplicateResult?.is_duplicate
+    ) {
+      setDuplicateResult(null);
+      setDuplicateReviewFor(null);
+      setDuplicateError(null);
+      dispatch(submitComplaint(complaint));
+      return;
+    }
+
+    setCheckingDuplicate(true);
+    setDuplicateError(null);
+    setDuplicateResult(null);
+    setDuplicateReviewFor(null);
+
+    try {
+      const result = await checkDuplicate(complaint);
+
+      if (result.is_duplicate) {
+        setDuplicateResult(result);
+        setDuplicateReviewFor(currentComplaint);
+        return;
+      }
+
+      dispatch(submitComplaint(complaint));
+    } catch (error) {
+      console.error("Duplicate check failed:", error);
+      setDuplicateError(
+        "Could not check for duplicates. Please try again before saving."
+      );
+    } finally {
+      setCheckingDuplicate(false);
+    }
   };
+
+const cancelDuplicateReview = () => {
+  console.log("Cancel duplicate review clicked");
+  console.log("Complaint before cancel:", complaint);
+
+  setDuplicateResult(null);
+  setDuplicateReviewFor(null);
+  setDuplicateError(null);
+
+  console.log("Cancel handler does not reset complaint state");
+};
+
+  const isBusy = saving || checkingDuplicate;
 
   return (
     <div className="panel complaint-panel">
@@ -116,18 +178,14 @@ export default function ComplaintForm() {
       <div className="panel-header">
         <div>
           <p className="eyebrow">CUSTOMER QUALITY</p>
-
           <h2>Log Customer Complaint</h2>
-
           <p>
             Capture complaint information for quality review and
             investigation.
           </p>
         </div>
 
-        <span className="status-badge">
-          Pending Triage
-        </span>
+        <span className="status-badge">Pending Triage</span>
       </div>
 
       {/* Origin & Customer */}
@@ -244,8 +302,11 @@ export default function ComplaintForm() {
         <button
           type="button"
           className="button secondary"
-          onClick={() => dispatch(resetComplaint())}
-          disabled={saving}
+          onClick={() => {
+            dispatch(resetComplaint());
+            cancelDuplicateReview();
+          }}
+          disabled={isBusy}
         >
           Reset Form
         </button>
@@ -254,26 +315,93 @@ export default function ComplaintForm() {
           type="button"
           className="button primary"
           onClick={handleSave}
-          disabled={saving}
+          disabled={isBusy}
         >
-          {saving ? "Saving Complaint..." : "Save Complaint"}
+          {saving
+            ? "Saving Complaint..."
+            : checkingDuplicate
+              ? "Checking Duplicates..."
+              : "Save Complaint"}
         </button>
       </div>
+
+      {/* Duplicate Warning */}
+      {duplicateResult?.is_duplicate &&
+        duplicateReviewFor === JSON.stringify(complaint) && (
+          <div className="save-error" role="alert">
+            <h3>Potential Duplicate Complaint</h3>
+
+            <p>
+              Similar complaints were found. Review the matches before
+              continuing.
+            </p>
+
+            <p>
+              Status: <strong>{duplicateResult.duplicate_status}</strong>
+            </p>
+
+            {duplicateResult.matches.map((match, index) => (
+              <div key={`${match.complaint_id}-${index}`}>
+                <p>
+                  <strong>
+                    Complaint:{" "}
+                    {match.complaint_number ?? match.complaint_id}
+                  </strong>
+                </p>
+
+                {match.score !== undefined && (
+                  <p>Duplicate score: {match.score}</p>
+                )}
+
+                {match.reasons && match.reasons.length > 0 && (
+                  <ul>
+                    {match.reasons.map((reason, reasonIndex) => (
+                      <li key={reasonIndex}>{reason}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+
+            <div className="form-actions">
+              <button
+                type="button"
+                className="button primary"
+                disabled={isBusy}
+                onClick={handleSave}
+              >
+                Continue Anyway
+              </button>
+
+              <button
+                type="button"
+                className="button secondary"
+                onClick={cancelDuplicateReview}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+      {/* Duplicate Check Error */}
+      {duplicateError && (
+        <div className="save-error" role="alert">
+          {duplicateError}
+        </div>
+      )}
 
       {/* Success Message */}
       {saved && (
         <div className="save-success">
           ✓ Complaint saved successfully
           {savedComplaintNumber && (
-            <strong>
-              {" "}
-              — {savedComplaintNumber}
-            </strong>
+            <strong> — {savedComplaintNumber}</strong>
           )}
         </div>
       )}
 
-      {/* Error Message */}
+      {/* Save Error */}
       {saveError && (
         <div className="save-error">
           ✕ {saveError}

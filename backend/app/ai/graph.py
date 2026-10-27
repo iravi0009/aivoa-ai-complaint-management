@@ -8,6 +8,47 @@ from app.ai.nodes.priority import priority_node
 from app.ai.nodes.finalize import finalize_node
 
 
+def extraction_route(state: ComplaintState) -> str:
+    """
+    Route the graph based on extraction success.
+
+    Extraction must contain meaningful complaint information
+    before validation, risk, and priority assessment can run.
+    """
+
+    # AI/model or extraction error
+    if state.get("errors"):
+        return "error"
+
+    complaint = state.get("complaint")
+
+    # No extracted complaint
+    if not complaint:
+        return "error"
+
+    # Core fields used to determine whether the extraction
+    # contains meaningful complaint information.
+    meaningful_fields = [
+        "customer_name",
+        "product_name",
+        "batch_number",
+        "complaint_type",
+        "complaint_date",
+        "description",
+    ]
+
+    # At least one meaningful field must contain information.
+    has_meaningful_data = any(
+        complaint.get(field) not in (None, "")
+        for field in meaningful_fields
+    )
+
+    if not has_meaningful_data:
+        return "error"
+
+    return "success"
+
+
 def build_complaint_graph():
     graph = StateGraph(ComplaintState)
 
@@ -41,9 +82,13 @@ def build_complaint_graph():
         "extract_complaint",
     )
 
-    graph.add_edge(
+    graph.add_conditional_edges(
         "extract_complaint",
-        "validate_complaint",
+        extraction_route,
+        {
+            "success": "validate_complaint",
+            "error": "finalize",
+        },
     )
 
     graph.add_edge(

@@ -1,0 +1,6 @@
+Customer: ABC Pharmaceuticals
+Product: Paracetamol Tablets
+Strength: 500 mg
+Batch: PCM-240821
+Complaint Type: Product Quality
+Description: Brown discoloration was observed on several tablets during routine inspection. No patient injury was reported.

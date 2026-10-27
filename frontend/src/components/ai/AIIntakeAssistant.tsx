@@ -1,3 +1,4 @@
+
 import { useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 
@@ -17,11 +18,12 @@ import {
   uploadComplaint,
 } from "../../services/api";
 
+import type { AIAnalysisResult } from "../../types/complaint";
+
 const ALLOWED_EXTENSIONS = [".pdf", ".docx", ".txt", ".eml"];
 
 export default function AIIntakeAssistant() {
   const dispatch = useDispatch<AppDispatch>();
-
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [text, setText] = useState("");
@@ -44,42 +46,26 @@ export default function AIIntakeAssistant() {
     (state: RootState) => state.ai.error
   );
 
-  /* =========================
-     POPULATE FORM FROM AI
-     ========================= */
-
-  const populateFormFromResult = (aiResult: any) => {
-    const aiComplaint = aiResult?.complaint;
-
-    if (!aiComplaint) {
+  const populateFormFromResult = (aiResult: AIAnalysisResult) => {
+    if (!aiResult?.complaint) {
       throw new Error("AI did not return complaint information.");
     }
 
     dispatch(
       populateComplaint({
-        ...aiComplaint,
-
-        initial_severity:
-          aiResult.risk_assessment?.severity || "",
-
-        priority:
-          aiResult.priority_assessment?.priority || "",
+        ...aiResult.complaint,
+        initial_severity: aiResult.risk_assessment?.severity || "",
+        priority: aiResult.priority_assessment?.priority || "",
       })
     );
   };
-
-  /* =========================
-     ANALYZE TEXT
-     ========================= */
 
   const handleAnalyze = async () => {
     const complaintText = text.trim();
 
     if (!complaintText) {
       dispatch(
-        analysisFailed(
-          "Please paste a customer complaint before analyzing."
-        )
+        analysisFailed("Please paste a customer complaint before analyzing.")
       );
       return;
     }
@@ -87,177 +73,90 @@ export default function AIIntakeAssistant() {
     dispatch(analysisStarted());
 
     try {
-      console.log("========== AI ANALYSIS ==========");
-      console.log("Complaint text:", complaintText);
-
       const response = await analyzeComplaint(complaintText);
 
-      console.log("AI response:", response);
-
       if (!response.success || !response.result) {
-        throw new Error(
-          "AI returned an invalid complaint analysis."
-        );
+        throw new Error("AI returned an invalid complaint analysis.");
       }
 
-      dispatch(
-        analysisSucceeded(response.result)
-      );
-
+      dispatch(analysisSucceeded(response.result));
       populateFormFromResult(response.result);
-
       setUploadedFile(null);
-
-      console.log(
-        "✓ AI analysis completed successfully."
-      );
     } catch (err: unknown) {
-      console.error(
-        "AI ANALYSIS ERROR:",
-        err
-      );
+      console.error("AI ANALYSIS ERROR:", err);
 
       dispatch(
         analysisFailed(
-          err instanceof Error
-            ? err.message
-            : "Unable to analyze complaint."
+          err instanceof Error ? err.message : "Unable to analyze complaint."
         )
       );
     }
   };
 
-  /* =========================
-     USE CURRENT FORM DATA
-     ========================= */
-
   const handleUseFormData = () => {
     const formText = `
 Customer Complaint
 
-Complaint Source: ${complaint.complaint_source}
-
-Customer Name: ${complaint.customer_name}
-
-Product Name: ${complaint.product_name}
-
-Product Strength / Grade: ${complaint.product_strength}
-
-Batch / Lot Number: ${complaint.batch_number}
-
-Manufacturing Date: ${complaint.manufacturing_date}
-
-Expiry Date: ${complaint.expiry_date}
-
+Complaint Source: ${complaint.complaint_source ?? ""}
+Customer Name: ${complaint.customer_name ?? ""}
+Product Name: ${complaint.product_name ?? ""}
+Product Strength / Grade: ${complaint.product_strength ?? ""}
+Batch / Lot Number: ${complaint.batch_number ?? ""}
+Manufacturing Date: ${complaint.manufacturing_date ?? ""}
+Expiry Date: ${complaint.expiry_date ?? ""}
 Quantity Affected: ${complaint.quantity_affected ?? ""}
-
-Unit: ${complaint.quantity_unit}
-
-Complaint Type: ${complaint.complaint_type}
-
-Complaint Date: ${complaint.complaint_date}
+Unit: ${complaint.quantity_unit ?? ""}
+Complaint Type: ${complaint.complaint_type ?? ""}
+Complaint Date: ${complaint.complaint_date ?? ""}
 
 Detailed Complaint Description:
+${complaint.description ?? ""}
 
-${complaint.description}
-
-Initial Severity: ${complaint.initial_severity}
-
-Priority: ${complaint.priority}
+Initial Severity: ${complaint.initial_severity ?? ""}
+Priority: ${complaint.priority ?? ""}
 `.trim();
 
     setText(formText);
     setUploadedFile(null);
-
     dispatch(clearAnalysis());
   };
 
-  /* =========================
-     FILE VALIDATION
-     ========================= */
-
   const validateFile = (file: File) => {
-    const extension =
-      "." +
-      file.name
-        .split(".")
-        .pop()
-        ?.toLowerCase();
+    const extension = `.${file.name.split(".").pop()?.toLowerCase()}`;
 
-    if (!extension || !ALLOWED_EXTENSIONS.includes(extension)) {
+    if (!ALLOWED_EXTENSIONS.includes(extension)) {
       dispatch(
         analysisFailed(
           "Unsupported file format. Please upload PDF, DOCX, TXT, or EML."
         )
       );
-
       return false;
     }
 
     return true;
   };
 
-  /* =========================
-     FILE UPLOAD + AI ANALYSIS
-     ========================= */
-
   const handleFileUpload = async (file: File) => {
-    if (!validateFile(file)) {
-      return;
-    }
+    if (!validateFile(file)) return;
 
     dispatch(analysisStarted());
-
     setUploadedFile(file.name);
 
     try {
-      console.log(
-        "========== DOCUMENT UPLOAD =========="
-      );
-
-      console.log("File:", {
-        name: file.name,
-        type: file.type,
-        size: file.size,
-      });
-
       const response = await uploadComplaint(file);
 
-      console.log(
-        "Document AI response:",
-        response
-      );
-
       if (!response.success || !response.result) {
-        throw new Error(
-          "Document analysis returned an invalid response."
-        );
+        throw new Error("Document analysis returned an invalid response.");
       }
 
-      dispatch(
-        analysisSucceeded(response.result)
-      );
-
+      dispatch(analysisSucceeded(response.result));
       populateFormFromResult(response.result);
 
-      /*
-       * Show extracted document text
-       * inside the AI textarea so the user
-       * can review what was analyzed.
-       */
       if (response.extracted_text) {
         setText(response.extracted_text);
       }
-
-      console.log(
-        "✓ Document processed successfully."
-      );
     } catch (err: unknown) {
-      console.error(
-        "DOCUMENT UPLOAD ERROR:",
-        err
-      );
-
+      console.error("DOCUMENT UPLOAD ERROR:", err);
       setUploadedFile(null);
 
       dispatch(
@@ -270,17 +169,9 @@ Priority: ${complaint.priority}
     }
   };
 
-  /* =========================
-     BROWSE FILES
-     ========================= */
-
   const handleBrowseFiles = () => {
     fileInputRef.current?.click();
   };
-
-  /* =========================
-     FILE INPUT CHANGE
-     ========================= */
 
   const handleFileChange = (
     event: React.ChangeEvent<HTMLInputElement>
@@ -288,19 +179,11 @@ Priority: ${complaint.priority}
     const file = event.target.files?.[0];
 
     if (file) {
-      handleFileUpload(file);
+      void handleFileUpload(file);
     }
 
-    /*
-     * Reset input so the same file
-     * can be selected again.
-     */
     event.target.value = "";
   };
-
-  /* =========================
-     DRAG EVENTS
-     ========================= */
 
   const handleDragOver = (
     event: React.DragEvent<HTMLDivElement>
@@ -325,13 +208,9 @@ Priority: ${complaint.priority}
     const file = event.dataTransfer.files?.[0];
 
     if (file) {
-      handleFileUpload(file);
+      void handleFileUpload(file);
     }
   };
-
-  /* =========================
-     TEXT CHANGE
-     ========================= */
 
   const handleTextChange = (
     event: React.ChangeEvent<HTMLTextAreaElement>
@@ -345,70 +224,44 @@ Priority: ${complaint.priority}
     setUploadedFile(null);
   };
 
+  const missingFields = result?.completeness?.missing_fields ?? [];
+  const isComplete = result?.completeness?.is_complete ?? false;
+
   return (
     <section className="panel ai-panel">
-
-      {/* =========================
-          HEADER
-          ========================= */}
-
       <div className="panel-header">
-
         <div>
-
-          <span className="section-kicker">
-            AI-POWERED INTAKE
-          </span>
-
-          <h2>
-            AI Complaint Intake Assistant
-          </h2>
-
+          <span className="section-kicker">AI-POWERED INTAKE</span>
+          <h2>AI Complaint Intake Assistant</h2>
           <p>
-            Upload complaint documents or paste customer
-            communication to automatically extract structured data.
+            Upload complaint documents or paste customer communication to
+            automatically extract structured data.
           </p>
-
         </div>
 
         <span className="ai-status">
-          <span className="status-dot"></span>
+          <span className="status-dot" />
           AI Ready
         </span>
-
       </div>
 
       <div className="ai-divider" />
 
-      {/* =========================
-          DOCUMENT UPLOAD
-          ========================= */}
-
       <div
-        className={`upload-box ${
-          isDragging
-            ? "upload-dragging"
-            : ""
-        }`}
-
+        className={`upload-box ${isDragging ? "upload-dragging" : ""}`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-
-        <div className="upload-icon">
+        <div className="upload-icon" aria-hidden="true">
           ↑
         </div>
 
         <strong>
-          {isDragging
-            ? "Drop complaint document here"
-            : "Drop complaint document here"}
+          {isDragging ? "Drop your complaint document here" : "Drop complaint document here"}
         </strong>
 
-        <span>
-          Supported formats: PDF, DOCX, TXT, EML
-        </span>
+        <span>Supported formats: PDF, DOCX, TXT, EML</span>
 
         <button
           type="button"
@@ -427,32 +280,17 @@ Priority: ${complaint.priority}
           hidden
           onChange={handleFileChange}
         />
-
       </div>
-
-      {/* =========================
-          UPLOADED FILE
-          ========================= */}
 
       {uploadedFile && (
         <div className="uploaded-file">
-          ✓ {uploadedFile} processed successfully
+          {analyzing ? "Processing" : "Selected"}: {uploadedFile}
         </div>
       )}
 
-      {/* =========================
-          DIVIDER
-          ========================= */}
-
       <div className="or-divider">
-        <span>
-          OR PASTE COMPLAINT TEXT
-        </span>
+        <span>OR PASTE COMPLAINT TEXT</span>
       </div>
-
-      {/* =========================
-          TEXT INPUT
-          ========================= */}
 
       <textarea
         className="ai-textarea"
@@ -460,11 +298,8 @@ Priority: ${complaint.priority}
         onChange={handleTextChange}
         placeholder="Paste a customer complaint or email here..."
         disabled={analyzing}
+        rows={5}
       />
-
-      {/* =========================
-          FORM DATA BUTTON
-          ========================= */}
 
       <button
         type="button"
@@ -475,205 +310,116 @@ Priority: ${complaint.priority}
         Use Current Form Data
       </button>
 
-      {/* =========================
-          ANALYZE BUTTON
-          ========================= */}
-
       <button
         type="button"
         className="analyze-button"
-        onClick={handleAnalyze}
-        disabled={
-          analyzing ||
-          !text.trim()
-        }
+        onClick={() => void handleAnalyze()}
+        disabled={analyzing || !text.trim()}
       >
-        {analyzing
-          ? "Analyzing Complaint..."
-          : "Analyze Complaint"}
+        {analyzing ? "Analyzing Complaint..." : "Analyze Complaint"}
       </button>
 
-      {/* =========================
-          PROGRESS
-          ========================= */}
-
       {analyzing && (
-        <div className="ai-progress">
-
+        <div className="ai-progress" role="status">
           <div className="progress-bar">
-            <div className="progress-fill"></div>
+            <div className="progress-fill" />
           </div>
-
           <span>
             AI is extracting and assessing complaint information...
           </span>
-
         </div>
       )}
-
-      {/* =========================
-          ERROR
-          ========================= */}
 
       {error && !analyzing && (
-        <div className="ai-error">
-
-          <strong>
-            AI analysis failed
-          </strong>
-
-          <span>
-            {error}
-          </span>
-
+        <div className="ai-error" role="alert">
+          <strong>AI analysis failed</strong>
+          <span>{error}</span>
         </div>
       )}
-
-      {/* =========================
-          AI ASSESSMENT
-          ========================= */}
 
       {result && !analyzing && (
         <div className="ai-assessment">
-
           <div className="assessment-header">
-
             <div>
-
-              <span className="section-kicker">
-                AI ASSESSMENT
-              </span>
-
-              <h3>
-                Complaint Analysis
-              </h3>
-
+              <span className="section-kicker">AI ASSESSMENT</span>
+              <h3>Complaint Analysis</h3>
             </div>
 
             <span className="confidence">
-              {Math.round(
-                (result.risk_assessment?.confidence || 0) *
-                  100
-              )}
-              % confidence
+              {Math.round((result.risk_assessment?.confidence ?? 0) * 100)}%
+              confidence
             </span>
-
           </div>
-
-          {/* =========================
-              ASSESSMENT CARDS
-              ========================= */}
 
           <div className="assessment-grid">
-
             <div className="assessment-card">
-
-              <span>
-                Completeness
-              </span>
-
-              <strong>
-                {result.completeness?.score ?? 0}%
-              </strong>
-
+              <span>Completeness</span>
+              <strong>{isComplete ? "Complete" : "Incomplete"}</strong>
               <small>
-                {result.completeness?.status ||
-                  "Unknown"}
+                {missingFields.length} missing{" "}
+                {missingFields.length === 1 ? "field" : "fields"}
               </small>
-
             </div>
 
             <div className="assessment-card">
-
-              <span>
-                Risk Level
-              </span>
-
+              <span>Risk Level</span>
               <strong>
-                {result.risk_assessment?.risk_level ||
-                  "Unknown"}
+                {result.risk_assessment?.risk_level ?? "Unknown"}
               </strong>
-
               <small>
-                {result.risk_assessment?.severity ||
-                  "Unknown"}
+                {result.risk_assessment?.severity ?? "Not assessed"}
               </small>
-
             </div>
 
             <div className="assessment-card">
-
-              <span>
-                Priority
-              </span>
-
+              <span>Priority</span>
               <strong>
-                {result.priority_assessment?.priority ||
-                  "Unknown"}
+                {result.priority_assessment?.priority ?? "Unknown"}
               </strong>
-
-              <small>
-                AI recommended
-              </small>
-
+              <small>AI recommended</small>
             </div>
-
           </div>
 
-          {/* =========================
-              AI REASONING
-              ========================= */}
-
-          {result.risk_assessment?.reason && (
+          {result.risk_assessment?.reasoning && (
             <div className="assessment-reason">
-
-              <strong>
-                AI Reasoning
-              </strong>
-
-              <p>
-                {result.risk_assessment.reason}
-              </p>
-
+              <strong>AI Reasoning</strong>
+              <p>{result.risk_assessment.reasoning}</p>
             </div>
           )}
 
-          {/* =========================
-              MISSING INFORMATION
-              ========================= */}
-
-          {result.completeness?.missing_fields?.length >
-            0 && (
+          {missingFields.length > 0 && (
             <div className="missing-fields">
-
-              <strong>
-                Missing Information
-              </strong>
-
+              <strong>Missing Information</strong>
               <ul>
-                {result.completeness.missing_fields.map(
-                  (field) => (
-                    <li key={field}>
-                      {field}
-                    </li>
-                  )
-                )}
+                {missingFields.map((field) => (
+                  <li key={field}>{field}</li>
+                ))}
               </ul>
-
             </div>
           )}
 
-          {/* =========================
-              SUCCESS
-              ========================= */}
+          {result.completeness?.warnings &&
+            result.completeness.warnings.length > 0 && (
+              <div className="missing-fields">
+                <strong>Review Warnings</strong>
+                <ul>
+                  {result.completeness.warnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
-          <div className="ai-success">
+          <div className="ai-success" role="status">
             ✓ Complaint information extracted and form populated.
           </div>
 
+          <p className="ai-disclaimer">
+            AI-generated assessment is decision support only. Authorized QA
+            personnel must review the extracted information, risk, and priority.
+          </p>
         </div>
       )}
-
     </section>
   );
 }

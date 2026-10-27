@@ -2,28 +2,163 @@ from app.ai.state import ComplaintState
 
 
 def priority_node(state: ComplaintState) -> ComplaintState:
+    """
+    Calculate complaint priority using risk, patient-safety signals,
+    batch information, and complaint completeness.
+
+    Priority:
+        P1 = Immediate / urgent QA attention
+        P2 = High attention
+        P3 = Routine attention
+    """
+
     risk = state.get("risk_assessment", {})
+    complaint = state.get("complaint", {})
+    completeness = state.get("completeness", {})
 
-    risk_level = risk.get(
-        "risk_level",
-        "Low",
+    risk_level = str(
+        risk.get("risk_level", "LOW")
+    ).upper()
+
+    risk_score = int(
+        risk.get("score", 0) or 0
     )
 
-    priority_map = {
-        "Critical": "Critical",
-        "High": "High",
-        "Medium": "Medium",
-        "Low": "Low",
-    }
+    description = str(
+        complaint.get("description") or ""
+    ).lower()
 
-    priority = priority_map.get(
-        risk_level,
-        "Medium",
-    )
+    complaint_type = str(
+        complaint.get("complaint_type") or ""
+    ).strip().lower()
+
+    factors = []
+    priority_score = risk_score
+
+    # ---------------------------------------------------------
+    # 1. Risk level
+    # ---------------------------------------------------------
+    if risk_level == "CRITICAL":
+        priority_score += 30
+        factors.append("Critical risk classification.")
+
+    elif risk_level == "HIGH":
+        priority_score += 15
+        factors.append("High risk classification.")
+
+    elif risk_level == "MEDIUM":
+        factors.append("Medium risk classification.")
+
+    else:
+        factors.append("Low risk classification.")
+
+    # ---------------------------------------------------------
+    # 2. Patient safety signals
+    # ---------------------------------------------------------
+    patient_safety_keywords = [
+        "adverse event",
+        "serious reaction",
+        "patient injury",
+        "hospitalization",
+        "death",
+        "allergic reaction",
+        "overdose",
+    ]
+
+    negation_phrases = [
+        "no ",
+        "no reported",
+        "not reported",
+        "without ",
+        "denies ",
+        "denied ",
+        "none reported",
+        "was not ",
+        "were not ",
+        "did not ",
+        "does not ",
+    ]
+
+    matched_safety = []
+
+    for keyword in patient_safety_keywords:
+        index = description.find(keyword)
+
+        if index == -1:
+            continue
+
+        context_start = max(0, index - 30)
+        context = description[context_start:index]
+
+        if not any(
+            phrase in context
+            for phrase in negation_phrases
+        ):
+            matched_safety.append(keyword)
+
+    if matched_safety:
+        priority_score += 25
+        factors.append(
+            f"Patient safety signal: {', '.join(matched_safety)}."
+        )
+
+    # Complaint classification can also indicate patient impact.
+    if complaint_type in {
+        "adverse event",
+        "serious adverse event",
+        "patient safety",
+    }:
+        priority_score += 25
+        factors.append(
+            "Complaint type indicates potential patient safety impact."
+        )
+
+    # ---------------------------------------------------------
+    # 3. Batch information
+    # ---------------------------------------------------------
+    batch_number = complaint.get("batch_number")
+
+    if batch_number:
+        factors.append("Affected batch/lot is identified.")
+    else:
+        factors.append("Batch/lot information is unavailable.")
+
+    # ---------------------------------------------------------
+    # 4. Completeness
+    # ---------------------------------------------------------
+    is_complete = completeness.get("is_complete")
+
+    if is_complete is False:
+        factors.append(
+            "Complaint requires review because required information is missing."
+        )
+
+    elif is_complete is True:
+        factors.append(
+            "Complaint contains sufficient information for triage."
+        )
+
+    # ---------------------------------------------------------
+    # 5. Final priority
+    # ---------------------------------------------------------
+    if risk_level == "CRITICAL" or priority_score >= 90:
+        priority = "P1"
+
+    elif risk_level == "HIGH" or priority_score >= 45:
+        priority = "P1"
+
+    elif risk_level == "MEDIUM" or priority_score >= 20:
+        priority = "P2"
+
+    else:
+        priority = "P3"
+
+    reasoning = " ".join(factors)
 
     return {
         **state,
         "priority_assessment": {
             "priority": priority,
+            "reasoning": reasoning,
         },
     }
