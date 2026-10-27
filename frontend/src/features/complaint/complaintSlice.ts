@@ -1,12 +1,20 @@
 import {
   createAsyncThunk,
   createSlice,
-  PayloadAction,
+  type PayloadAction,
 } from "@reduxjs/toolkit";
 import axios from "axios";
 
 import type { Complaint } from "../../types/complaint";
-import { saveComplaint } from "../../services/api";
+
+import {
+  saveComplaint,
+  getComplaints,
+} from "../../services/api";
+
+/* =========================
+   INITIAL COMPLAINT
+   ========================= */
 
 const initialComplaint: Complaint = {
   complaint_source: "",
@@ -25,20 +33,41 @@ const initialComplaint: Complaint = {
   priority: "",
 };
 
+/* =========================
+   COMPLAINT STATE
+   ========================= */
+
 interface ComplaintState {
+  /* Current complaint form */
   current: Complaint;
+
+  /* Save state */
   saving: boolean;
   saved: boolean;
   savedComplaintNumber: string | null;
   error: string | null;
+
+  /* Complaint list */
+  list: Complaint[];
+  listLoading: boolean;
+  listError: string | null;
 }
+
+/* =========================
+   INITIAL STATE
+   ========================= */
 
 const initialState: ComplaintState = {
   current: { ...initialComplaint },
+
   saving: false,
   saved: false,
   savedComplaintNumber: null,
   error: null,
+
+  list: [],
+  listLoading: false,
+  listError: null,
 };
 
 /* =========================
@@ -66,7 +95,6 @@ export const submitComplaint = createAsyncThunk<
       console.log("Save response:", response);
 
       return response;
-
     } catch (error: unknown) {
       console.error("========== SAVE ERROR ==========");
       console.error("Full error:", error);
@@ -128,6 +156,85 @@ export const submitComplaint = createAsyncThunk<
 );
 
 /* =========================
+   FETCH COMPLAINTS
+   ========================= */
+
+export const fetchComplaints = createAsyncThunk<
+  Complaint[],
+  void,
+  { rejectValue: string }
+>(
+  "complaint/fetchComplaints",
+
+  async (_, { rejectWithValue }) => {
+    try {
+      console.log("========== FETCH COMPLAINTS ==========");
+
+      const response = await getComplaints();
+
+      console.log("Complaints response:", response);
+
+      return response;
+    } catch (error: unknown) {
+      console.error("========== FETCH COMPLAINTS ERROR ==========");
+      console.error("Full error:", error);
+
+      /* Axios error */
+      if (axios.isAxiosError(error)) {
+        console.error("Request URL:", error.config?.url);
+        console.error("Request method:", error.config?.method);
+        console.error("Status:", error.response?.status);
+        console.error("Response data:", error.response?.data);
+        console.error("Axios message:", error.message);
+
+        /* Server returned an HTTP response */
+        if (error.response) {
+          const status = error.response.status;
+          const data = error.response.data;
+
+          if (
+            data &&
+            typeof data === "object" &&
+            "detail" in data &&
+            typeof data.detail === "string"
+          ) {
+            return rejectWithValue(
+              `Server error ${status}: ${data.detail}`
+            );
+          }
+
+          return rejectWithValue(
+            `Server returned HTTP ${status}.`
+          );
+        }
+
+        /* Request sent but backend did not respond */
+        if (error.request) {
+          return rejectWithValue(
+            "No response from backend. Make sure FastAPI is running on http://localhost:8000."
+          );
+        }
+
+        return rejectWithValue(
+          error.message || "Unable to load complaints."
+        );
+      }
+
+      /* Normal JavaScript Error */
+      if (error instanceof Error) {
+        console.error("Error message:", error.message);
+
+        return rejectWithValue(error.message);
+      }
+
+      return rejectWithValue(
+        "Unknown error occurred while loading complaints."
+      );
+    }
+  }
+);
+
+/* =========================
    COMPLAINT SLICE
    ========================= */
 
@@ -137,7 +244,10 @@ const complaintSlice = createSlice({
   initialState,
 
   reducers: {
-    /* Update one form field */
+    /* =========================
+       UPDATE FORM FIELD
+       ========================= */
+
     updateField: (
       state,
       action: PayloadAction<{
@@ -153,33 +263,39 @@ const complaintSlice = createSlice({
       state.error = null;
     },
 
-    /* Populate form from AI */
-   populateComplaint: (
-  state,
-  action: PayloadAction<Partial<Complaint>>
-) => {
-  const aiData = action.payload;
+    /* =========================
+       POPULATE FORM FROM AI
+       ========================= */
 
-  const cleanedData = Object.fromEntries(
-    Object.entries(aiData).filter(
-      ([, value]) =>
-        value !== null &&
-        value !== undefined &&
-        value !== ""
-    )
-  ) as Partial<Complaint>;
+    populateComplaint: (
+      state,
+      action: PayloadAction<Partial<Complaint>>
+    ) => {
+      const aiData = action.payload;
 
-  state.current = {
-    ...state.current,
-    ...cleanedData,
-  };
+      const cleanedData = Object.fromEntries(
+        Object.entries(aiData).filter(
+          ([, value]) =>
+            value !== null &&
+            value !== undefined &&
+            value !== ""
+        )
+      ) as Partial<Complaint>;
 
-  state.saved = false;
-  state.savedComplaintNumber = null;
-  state.error = null;
-},
+      state.current = {
+        ...state.current,
+        ...cleanedData,
+      };
 
-    /* Reset complete form */
+      state.saved = false;
+      state.savedComplaintNumber = null;
+      state.error = null;
+    },
+
+    /* =========================
+       RESET FORM
+       ========================= */
+
     resetComplaint: (state) => {
       state.current = { ...initialComplaint };
 
@@ -189,7 +305,10 @@ const complaintSlice = createSlice({
       state.error = null;
     },
 
-    /* Clear success/error message */
+    /* =========================
+       CLEAR SAVE STATUS
+       ========================= */
+
     clearSaveStatus: (state) => {
       state.saved = false;
       state.error = null;
@@ -204,7 +323,10 @@ const complaintSlice = createSlice({
   extraReducers: (builder) => {
     builder
 
-      /* Saving */
+      /* =========================
+         SAVE COMPLAINT
+         ========================= */
+
       .addCase(
         submitComplaint.pending,
         (state) => {
@@ -215,7 +337,6 @@ const complaintSlice = createSlice({
         }
       )
 
-      /* Successfully saved */
       .addCase(
         submitComplaint.fulfilled,
         (state, action) => {
@@ -228,7 +349,6 @@ const complaintSlice = createSlice({
         }
       )
 
-      /* Failed */
       .addCase(
         submitComplaint.rejected,
         (state, action) => {
@@ -240,6 +360,39 @@ const complaintSlice = createSlice({
             action.payload ||
             action.error.message ||
             "Unable to save complaint.";
+        }
+      )
+
+      /* =========================
+         FETCH COMPLAINTS
+         ========================= */
+
+      .addCase(
+        fetchComplaints.pending,
+        (state) => {
+          state.listLoading = true;
+          state.listError = null;
+        }
+      )
+
+      .addCase(
+        fetchComplaints.fulfilled,
+        (state, action) => {
+          state.listLoading = false;
+          state.list = action.payload;
+          state.listError = null;
+        }
+      )
+
+      .addCase(
+        fetchComplaints.rejected,
+        (state, action) => {
+          state.listLoading = false;
+
+          state.listError =
+            action.payload ||
+            action.error.message ||
+            "Unable to load complaints.";
         }
       );
   },

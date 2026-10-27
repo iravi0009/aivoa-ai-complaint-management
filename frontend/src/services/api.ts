@@ -115,6 +115,44 @@ export async function saveComplaint(
   return response.data;
 }
 
+
+/* =========================
+   DUPLICATE DETECTION
+   ========================= */
+
+export interface DuplicateMatch {
+  complaint_id: number;
+  complaint_number?: string;
+  score?: number;
+  reasons?: string[];
+}
+
+export interface DuplicateCheckResult {
+  is_duplicate: boolean;
+  duplicate_status:
+    | "NO_DUPLICATE"
+    | "POTENTIAL_DUPLICATE"
+    | "HIGH_CONFIDENCE_DUPLICATE";
+  matches: DuplicateMatch[];
+}
+
+
+export async function checkDuplicate(complaint: Complaint) {
+  const payload = {
+    ...complaint,
+    manufacturing_date: complaint.manufacturing_date || null,
+    expiry_date: complaint.expiry_date || null,
+  };
+
+  const response = await api.post<DuplicateCheckResult>(
+    "/api/complaints/check-duplicate",
+    payload
+  );
+
+  return response.data;
+}
+
+
 /* =========================
    GET COMPLAINTS
    ========================= */
@@ -122,6 +160,86 @@ export async function saveComplaint(
 export async function getComplaints() {
   const response = await api.get(
     "/api/complaints"
+  );
+
+  return response.data;
+}
+
+/* =========================
+   COMPLAINT DETAIL
+   ========================= */
+
+export async function getComplaint(id: number): Promise<Complaint> {
+  const response = await api.get<Complaint>(`/api/complaints/${id}`);
+  return response.data;
+}
+
+/* =========================
+   INVESTIGATION
+   ========================= */
+
+export async function getInvestigation(id: number) {
+  const response = await api.get(
+    `/api/complaints/${id}/investigation`
+  );
+
+  return response.data;
+}
+
+export async function createInvestigation(
+  id: number,
+  data: {
+    investigation_summary?: string;
+    impact_assessment?: string;
+    root_cause?: string;
+    conclusion?: string;
+  }
+) {
+  const response = await api.post(
+    `/api/complaints/${id}/investigation`,
+    data
+  );
+
+  return response.data;
+}
+
+export async function updateInvestigation(
+  id: number,
+  data: {
+    status?: string;
+    investigation_summary?: string;
+    impact_assessment?: string;
+    root_cause?: string;
+    conclusion?: string;
+  }
+) {
+  const response = await api.patch(
+    `/api/complaints/${id}/investigation`,
+    data
+  );
+
+  return response.data;
+}
+
+/* =========================
+   AI ROOT CAUSE
+   ========================= */
+
+export async function recommendRootCauses(id: number) {
+  const response = await api.post(
+    `/api/complaints/${id}/investigation/root-cause-recommendation`
+  );
+
+  return response.data;
+}
+
+/* =========================
+   AI CAPA
+   ========================= */
+
+export async function recommendCAPA(id: number) {
+  const response = await api.post(
+    `/api/complaints/${id}/investigation/capa-recommendation`
   );
 
   return response.data;

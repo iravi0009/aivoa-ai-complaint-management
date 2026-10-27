@@ -100,6 +100,12 @@ class Complaint(Base):
         Float,
         nullable=True,
     )
+    
+    ai_risk_level: Mapped[str | None] = mapped_column(
+        String(20),
+        nullable=True,
+        index=True,
+   )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime,

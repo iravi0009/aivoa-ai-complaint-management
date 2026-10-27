@@ -20,21 +20,19 @@ def validation_node(state: ComplaintState) -> ComplaintState:
         if not complaint.get(field)
     ]
 
-    total_fields = len(REQUIRED_FIELDS)
-    available_fields = total_fields - len(missing_fields)
+    is_complete = not missing_fields
 
-    score = round(
-        (available_fields / total_fields) * 100
-    )
+    warnings = []
+
+    if missing_fields:
+        warnings.append(
+            "Complaint requires review because required information is missing."
+        )
 
     completeness = {
-        "score": score,
+        "is_complete": is_complete,
         "missing_fields": missing_fields,
-        "status": (
-            "Complete"
-            if not missing_fields
-            else "Needs Review"
-        ),
+        "warnings": warnings,
     }
 
     return {

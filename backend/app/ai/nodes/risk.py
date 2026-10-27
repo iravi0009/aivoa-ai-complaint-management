@@ -41,6 +41,20 @@ QUALITY_KEYWORDS = [
     "impurity",
 ]
 
+NEGATION_PHRASES = [
+    "no ",
+    "no reported",
+    "not reported",
+    "without ",
+    "denies ",
+    "denied ",
+    "none reported",
+    "was not ",
+    "were not ",
+    "did not ",
+    "does not ",
+]
+
 RISK_THRESHOLDS = {
     "CRITICAL": 70,
     "HIGH": 45,
@@ -63,13 +77,32 @@ def _contains_keyword(
     text: str,
     keywords: list[str],
 ) -> list[str]:
-    """Return all matching risk indicators found in the text."""
+    """Return matching indicators that are not immediately negated."""
 
-    return [
-        keyword
-        for keyword in keywords
-        if keyword in text
-    ]
+    matches = []
+
+    for keyword in keywords:
+        start = 0
+
+        while True:
+            index = text.find(keyword, start)
+
+            if index == -1:
+                break
+
+            context_start = max(0, index - 30)
+            context = text[context_start:index]
+
+            if not any(
+                phrase in context
+                for phrase in NEGATION_PHRASES
+            ):
+                matches.append(keyword)
+                break
+
+            start = index + len(keyword)
+
+    return matches
 
 
 def risk_node(state: ComplaintState) -> ComplaintState:
@@ -89,11 +122,9 @@ def risk_node(state: ComplaintState) -> ComplaintState:
 
     complaint_type = (
         complaint.get("complaint_type") or ""
-    ).lower()
+    ).strip().lower()
 
-    combined_text = (
-        f"{description} {complaint_type}"
-    )
+    combined_text = f"{description} {complaint_type}"
 
     score = 0
     factors: list[str] = []
@@ -197,28 +228,30 @@ def risk_node(state: ComplaintState) -> ComplaintState:
     # 6. Complaint completeness
     # --------------------------------------------------------
 
-    completeness_score = completeness.get(
-        "score",
-        0,
-    )
+    is_complete = completeness.get("is_complete")
 
-    if completeness_score < 50:
-        score += RISK_WEIGHTS["incomplete_complaint"]
-
+    if is_complete is False:
         factors.append(
-            "Complaint information is substantially incomplete."
+            "Complaint information is incomplete."
         )
 
-    elif completeness_score < 80:
+    elif is_complete is True:
         factors.append(
-            "Some complaint information is missing."
+            "Complaint contains sufficient information for triage."
         )
+
 
     # --------------------------------------------------------
     # 7. Convert score to risk level
     # --------------------------------------------------------
 
-    if score >= RISK_THRESHOLDS["CRITICAL"]:
+    # Critical quality indicators require immediate QA review.
+    # Negated indicators are already filtered by _contains_keyword.
+    if (
+        safety_matches
+        or critical_quality_matches
+        or score >= RISK_THRESHOLDS["CRITICAL"]
+    ):
         level = "Critical"
         severity = "Critical"
 
@@ -254,7 +287,7 @@ def risk_node(state: ComplaintState) -> ComplaintState:
         confidence = 0.75
 
     # Reduce confidence when the complaint is incomplete.
-    if completeness_score < 50:
+    if is_complete is False:
         confidence = max(
             0.60,
             confidence - 0.10,
@@ -274,8 +307,8 @@ def risk_node(state: ComplaintState) -> ComplaintState:
     return {
         **state,
         "risk_assessment": {
-        "risk_level": level.upper(),
-        "severity": severity.upper(),
+            "risk_level": level.upper(),
+            "severity": severity.upper(),
             "confidence": round(confidence, 2),
             "reasoning": reasoning,
             "score": score,

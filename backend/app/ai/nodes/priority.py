@@ -16,13 +16,21 @@ def priority_node(state: ComplaintState) -> ComplaintState:
     complaint = state.get("complaint", {})
     completeness = state.get("completeness", {})
 
-    risk_level = str(risk.get("risk_level", "LOW")).upper()
-    risk_score = int(risk.get("score", 0) or 0)
+    risk_level = str(
+        risk.get("risk_level", "LOW")
+    ).upper()
 
-    description = str(complaint.get("description") or "").lower()
+    risk_score = int(
+        risk.get("score", 0) or 0
+    )
+
+    description = str(
+        complaint.get("description") or ""
+    ).lower()
+
     complaint_type = str(
         complaint.get("complaint_type") or ""
-    ).lower()
+    ).strip().lower()
 
     factors = []
     priority_score = risk_score
@@ -57,11 +65,36 @@ def priority_node(state: ComplaintState) -> ComplaintState:
         "overdose",
     ]
 
-    matched_safety = [
-        keyword
-        for keyword in patient_safety_keywords
-        if keyword in description
+    negation_phrases = [
+        "no ",
+        "no reported",
+        "not reported",
+        "without ",
+        "denies ",
+        "denied ",
+        "none reported",
+        "was not ",
+        "were not ",
+        "did not ",
+        "does not ",
     ]
+
+    matched_safety = []
+
+    for keyword in patient_safety_keywords:
+        index = description.find(keyword)
+
+        if index == -1:
+            continue
+
+        context_start = max(0, index - 30)
+        context = description[context_start:index]
+
+        if not any(
+            phrase in context
+            for phrase in negation_phrases
+        ):
+            matched_safety.append(keyword)
 
     if matched_safety:
         priority_score += 25
@@ -93,27 +126,17 @@ def priority_node(state: ComplaintState) -> ComplaintState:
     # ---------------------------------------------------------
     # 4. Completeness
     # ---------------------------------------------------------
-    completeness_score = completeness.get("score")
+    is_complete = completeness.get("is_complete")
 
-    if completeness_score is not None:
-        try:
-            completeness_score = float(completeness_score)
+    if is_complete is False:
+        factors.append(
+            "Complaint requires review because required information is missing."
+        )
 
-            if completeness_score < 60:
-                factors.append(
-                    "Complaint information is substantially incomplete."
-                )
-            elif completeness_score < 80:
-                factors.append(
-                    "Some complaint information is missing."
-                )
-            else:
-                factors.append(
-                    "Complaint contains sufficient information for triage."
-                )
-
-        except (TypeError, ValueError):
-            pass
+    elif is_complete is True:
+        factors.append(
+            "Complaint contains sufficient information for triage."
+        )
 
     # ---------------------------------------------------------
     # 5. Final priority
@@ -130,11 +153,12 @@ def priority_node(state: ComplaintState) -> ComplaintState:
     else:
         priority = "P3"
 
+    reasoning = " ".join(factors)
+
     return {
         **state,
         "priority_assessment": {
             "priority": priority,
-            "score": priority_score,
-            "factors": factors,
+            "reasoning": reasoning,
         },
     }

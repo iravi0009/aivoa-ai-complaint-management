@@ -44,8 +44,20 @@ class ComplaintResponse(ComplaintBase):
     complaint_number: str
     status: str
 
+    ai_risk_level: "RiskLevel | None" = None
+
     created_at: datetime
     updated_at: datetime
+
+
+# ============================================================
+# AI COMPLAINT CREATION REQUEST
+# ============================================================
+
+class AIComplaintCreate(BaseModel):
+    """Raw complaint text submitted for AI-assisted logging."""
+
+    text: str
 
 
 # ============================================================
@@ -107,10 +119,12 @@ class AIRiskAssessment(BaseModel):
 
     risk_level: RiskLevel
     severity: Severity
+
     confidence: float = Field(
         ge=0,
         le=1,
     )
+
     reasoning: str
 
     score: int = Field(
@@ -136,5 +150,8 @@ class AIAnalysisResponse(BaseModel):
     completeness: AICompleteness
     risk_assessment: AIRiskAssessment
     priority_assessment: AIPriorityAssessment
-    
-    
+
+class DuplicateCheckResponse(BaseModel):
+    is_duplicate: bool
+    duplicate_status: str
+    matches: list[dict] = Field(default_factory=list)
